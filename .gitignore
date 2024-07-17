@@ -1,5 +1,5 @@
 ./.settings
-..classpath
-..factorypath
-..project
-..gitignore
+.classpath
+.factorypath
+.project
+.gitignore
