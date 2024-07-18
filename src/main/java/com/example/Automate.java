@@ -1,7 +1,10 @@
+package com.example;
+
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.openqa.selenium.*;
 import org.openqa.selenium.chrome.ChromeDriver;
+import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.Select;
 import org.openqa.selenium.support.ui.WebDriverWait;
@@ -9,61 +12,79 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.text.DecimalFormat;
 import java.time.Duration;
+import java.util.Scanner;
 import java.util.concurrent.TimeUnit;
 
 public class Automate {
 
-    public static WebElement waitForElement(WebDriver driver, By by, int timeout) {
+    private static final DecimalFormat decimalFormat = new DecimalFormat("#.###");
+
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+
+        System.out.println("Select Chrome mode:");
+        System.out.println("1. Headless");
+        System.out.println("2. Normal");
+        int choice = getChoice(scanner, 1, 2);
+        boolean useHeadless = (choice == 1);
+
+        System.out.print("Please enter the path to your Excel file: ");
+        String filePath = scanner.nextLine().trim();
+
+        try {
+            automate(filePath, useHeadless);
+        } catch (IOException e) {
+            System.err.println("Error reading the Excel file: " + e.getMessage());
+        }
+    }
+
+    private static int getChoice(Scanner scanner, int min, int max) {
+        int choice;
         while (true) {
-            try {
-                return new WebDriverWait(driver, Duration.ofSeconds(timeout)).until(ExpectedConditions.visibilityOfElementLocated(by));
-            } catch (TimeoutException e) {
-                System.out.println("Retrying: Timeout waiting for element " + by);
+            System.out.print("Enter choice (" + min + "-" + max + "): ");
+            if (scanner.hasNextInt()) {
+                choice = scanner.nextInt();
+                if (choice >= min && choice <= max) {
+                    break;
+                } else {
+                    System.out.println("Invalid choice. Please try again.");
+                }
+            } else {
+                System.out.println("Invalid input. Please enter a number.");
+                scanner.next(); // Clear invalid input
             }
         }
+        scanner.nextLine(); // Consume newline left-over
+        return choice;
+    }
+
+    public static WebElement waitForElement(WebDriver driver, By by, int timeout) {
+        return new WebDriverWait(driver, Duration.ofSeconds(timeout))
+                .until(ExpectedConditions.visibilityOfElementLocated(by));
     }
 
     public static WebElement waitForElementToBeClickable(WebDriver driver, By by, int timeout) {
-        while (true) {
-            try {
-                return new WebDriverWait(driver, Duration.ofSeconds(timeout)).until(ExpectedConditions.elementToBeClickable(by));
-            } catch (TimeoutException e) {
-                System.out.println("Retrying: Timeout waiting for element " + by + " to be clickable");
-            }
-        }
+        return new WebDriverWait(driver, Duration.ofSeconds(timeout))
+                .until(ExpectedConditions.elementToBeClickable(by));
     }
 
     public static void retryOnStaleElement(Runnable func) {
-        while (true) {
+        int attempts = 0;
+        while (attempts < 3) {
             try {
                 func.run();
                 return;
             } catch (StaleElementReferenceException e) {
-                System.out.println("Retrying due to stale element reference");
                 try {
-                    TimeUnit.SECONDS.sleep(1);
+                    TimeUnit.MILLISECONDS.sleep(200);
                 } catch (InterruptedException interruptedException) {
                     Thread.currentThread().interrupt();
                 }
+                attempts++;
             }
         }
-    }
-
-    public static void keepSessionAlive(WebDriver driver) {
-        new Thread(() -> {
-            while (true) {
-                try {
-                    TimeUnit.MINUTES.sleep(2);  // Interact with the page every 2 minutes
-                    ((JavascriptExecutor) driver).executeScript("window.scrollBy(0, 1);");
-                    ((JavascriptExecutor) driver).executeScript("window.scrollBy(0, -1);");
-                    System.out.println("Keeping session alive.");
-                } catch (Exception e) {
-                    System.out.println("Failed to keep session alive: " + e);
-                    break;
-                }
-            }
-        }).start();
     }
 
     public static String getCellValue(Cell cell) {
@@ -71,7 +92,7 @@ public class Automate {
             case STRING:
                 return cell.getStringCellValue();
             case NUMERIC:
-                return String.valueOf((int) cell.getNumericCellValue());
+                return decimalFormat.format(cell.getNumericCellValue());
             case BOOLEAN:
                 return String.valueOf(cell.getBooleanCellValue());
             case FORMULA:
@@ -81,19 +102,77 @@ public class Automate {
         }
     }
 
-    public static void automate() throws IOException {
-        // Load Excel workbook and sheets
-        FileInputStream file = new FileInputStream(new File("/Users/rakan/Downloads/CDS.xlsm"));
-        Workbook workbook = new XSSFWorkbook(file);
-        Sheet otherSheet = workbook.getSheet("Other");
-        Sheet dataSheet = workbook.getSheet("Data");
+    public static boolean handlePopup(WebDriver driver) {
+        try {
+            WebElement confirmButton;
+            while ((confirmButton = new WebDriverWait(driver, Duration.ofSeconds(2))
+                    .until(ExpectedConditions.visibilityOfElementLocated(By.xpath("//button[text()='Confirmar e continuar']")))) != null) {
+                confirmButton.click();
+                TimeUnit.MILLISECONDS.sleep(300);
+            }
+            return true;
+        } catch (TimeoutException e) {
+            // No more popups to handle
+        } catch (Exception e) {
+            System.out.println("Failed to click on 'Confirmar e Continuar' button: " + e);
+        }
+        return false;
+    }
 
-        // Login details initialization
-        String u_name = getCellValue(otherSheet.getRow(1).getCell(0));
-        String u_pass = getCellValue(otherSheet.getRow(1).getCell(1));
-        String url = getCellValue(otherSheet.getRow(1).getCell(2));
+    public static void automate(String filePath, boolean useHeadless) throws IOException {
+        FileInputStream file = new FileInputStream(new File(filePath));
+        Workbook workbook = null;
+        try {
+            workbook = new XSSFWorkbook(file);
+            Sheet otherSheet = workbook.getSheet("Other");
+            Sheet dataSheet = workbook.getSheet("Data");
 
-        // General order details initialization
+            String u_name = getCellValue(otherSheet.getRow(1).getCell(0));
+            String u_pass = getCellValue(otherSheet.getRow(1).getCell(1));
+            String url = getCellValue(otherSheet.getRow(1).getCell(2));
+
+            ChromeOptions options = setupChromeOptions(useHeadless);
+            WebDriver driver = new ChromeDriver(options);
+            driver.manage().timeouts().implicitlyWait(3, TimeUnit.SECONDS);
+            driver.get(url);
+
+            try {
+                performLogin(driver, u_name, u_pass);
+                processRows(driver, dataSheet, otherSheet);
+            } catch (Exception e) {
+                System.err.println("An unexpected error occurred: " + e);
+            } finally {
+                driver.quit();
+            }
+        } finally {
+            if (workbook != null) {
+                workbook.close();
+            }
+            file.close();
+        }
+    }
+
+    private static ChromeOptions setupChromeOptions(boolean useHeadless) {
+        ChromeOptions options = new ChromeOptions();
+        if (useHeadless) {
+            options.addArguments("--headless");
+        }
+        options.addArguments("--disable-gpu");
+        options.addArguments("--window-size=1920,1080");
+        return options;
+    }
+
+    private static void performLogin(WebDriver driver, String u_name, String u_pass) {
+        waitForElement(driver, By.id("ContentPlaceHolder1_txtUserId"), 10).sendKeys(u_name);
+        driver.findElement(By.id("ContentPlaceHolder1_txtPwd")).sendKeys(u_pass);
+        driver.findElement(By.id("ContentPlaceHolder1_btnLogIn")).click();
+        waitForElement(driver, By.id("ContentPlaceHolder1_txtItemId"), 20);
+    }
+
+    private static void processRows(WebDriver driver, Sheet dataSheet, Sheet otherSheet) {
+        int i = 1;
+        int rowsProcessed = 0;
+
         String dest_country = getCellValue(otherSheet.getRow(4).getCell(0));
         String dest_post = getCellValue(otherSheet.getRow(4).getCell(1));
         String send_name = getCellValue(otherSheet.getRow(4).getCell(2));
@@ -109,91 +188,74 @@ public class Automate {
         String franchise = getCellValue(otherSheet.getRow(4).getCell(12));
         String franchise_currency = getCellValue(otherSheet.getRow(4).getCell(13));
 
-        // Initialize Script action
         String action = getCellValue(otherSheet.getRow(7).getCell(2));
 
-        // Set up Selenium WebDriver
-        WebDriver driver = new ChromeDriver();
-        driver.get(url);
-
-        try {
-            // Wait for the page to load and login
-            waitForElement(driver, By.id("ContentPlaceHolder1_txtUserId"), 10).sendKeys(u_name);
-            driver.findElement(By.id("ContentPlaceHolder1_txtPwd")).sendKeys(u_pass);
-            driver.findElement(By.id("ContentPlaceHolder1_btnLogIn")).click();
-
-            waitForElement(driver, By.id("ContentPlaceHolder1_txtItemId"), 10);
-
-            // Start the session alive thread
-            keepSessionAlive(driver);
-
-            int i = 1; // Excel rows are 0-indexed in POI
-            int rowsProcessed = 0;
-            while (true) {
-                Row row = dataSheet.getRow(i);
-                if (row == null || row.getCell(0) == null) {
-                    break;
-                }
-
-                String reference_id = getCellValue(row.getCell(3));
-                if (reference_id == null || reference_id.isEmpty()) {
-                    i++;
-                    continue;
-                }
-
-                WebElement element = waitForElementToBeClickable(driver, By.id("ContentPlaceHolder1_txtItemId"), 10);
-                element.clear();
-                element.sendKeys(reference_id);
-                retryOnStaleElement(() -> driver.findElement(By.id("ContentPlaceHolder1_btnOk")).click());
-
-                String curr = getCellValue(row.getCell(19));
-                System.out.println("Processing row " + i + " with currency " + curr);
-
-                if (action.equals("ADD")) {
-                    insertData(driver, dest_country, dest_post, send_name, send_addr1, send_addr2, send_city, send_state, send_country, send_tele, mail_class, orig_country, nature, franchise, franchise_currency, dataSheet, i, curr);
-                } else if (action.equals("UPDATE") || action.equals("DELETE")) {
-                    updateData(driver, action, dest_country, dest_post, send_name, send_addr1, send_addr2, send_city, send_state, send_country, send_tele, mail_class, orig_country, nature, franchise, franchise_currency, dataSheet, i, curr);
-                }
-
-                i++;
-                rowsProcessed++;
+        while (true) {
+            Row row = dataSheet.getRow(i);
+            if (row == null || row.getCell(0) == null) {
+                break;
             }
 
-            System.out.println(rowsProcessed + " Rows of data " + (action.equals("ADD") ? "added" : action.equals("UPDATE") ? "updated" : "deleted"));
+            String reference_id = getCellValue(row.getCell(3));
+            if (reference_id == null || reference_id.isEmpty()) {
+                i++;
+                continue;
+            }
 
-            System.out.println("Last row processed. Please review the browser to confirm the entry.");
-            System.in.read();  // Wait for Enter to be pressed
+            System.out.println("Processing row " + i);
 
-        } catch (Exception e) {
-            System.out.println("An unexpected error occurred: " + e);
-        } finally {
-            driver.quit();
+            WebElement element = waitForElementToBeClickable(driver, By.id("ContentPlaceHolder1_txtItemId"), 10);
+            element.clear();
+            element.sendKeys(reference_id);
+            retryOnStaleElement(() -> driver.findElement(By.id("ContentPlaceHolder1_btnOk")).click());
+
+            boolean popupHandled = handlePopup(driver);
+            if (popupHandled) {
+                waitForElement(driver, By.id("ContentPlaceHolder1_txtItemId"), 2);
+            }
+
+            String curr = getCellValue(row.getCell(19));
+
+            if (action.equals("ADD")) {
+                insertData(driver, dest_country, dest_post, send_name, send_addr1, send_addr2, send_city, send_state, send_country, send_tele, mail_class, orig_country, nature, franchise, franchise_currency, dataSheet, i, curr);
+            } else if (action.equals("UPDATE") || action.equals("DELETE")) {
+                updateData(driver, action, dest_country, dest_post, send_name, send_addr1, send_addr2, send_city, send_state, send_country, send_tele, mail_class, orig_country, nature, franchise, franchise_currency, dataSheet, i, curr);
+            }
+
+            i++;
+            rowsProcessed++;
         }
+
+        System.out.println(rowsProcessed + " Rows of data processed.");
     }
 
     public static void retryOnException(Runnable func) {
-        while (true) {
+        int attempts = 0;
+        while (attempts < 3) {
             try {
                 func.run();
                 return;
-            } catch (StaleElementReferenceException | NoSuchElementException e) {
-                System.out.println("Retrying due to: " + e);
+            } catch (StaleElementReferenceException | NoSuchElementException | ElementClickInterceptedException e) {
                 try {
-                    TimeUnit.SECONDS.sleep(1);
+                    TimeUnit.MILLISECONDS.sleep(200);
                 } catch (InterruptedException interruptedException) {
                     Thread.currentThread().interrupt();
                 }
+                attempts++;
+            } catch (Exception e) {
+                System.out.println("An error occurred: " + e);
+                return;
             }
         }
     }
 
     public static void insertData(WebDriver driver, String dest_country, String dest_post, String send_name, String send_addr1, String send_addr2, String send_city, String send_state, String send_country, String send_tele, String mail_class, String orig_country, String nature, String franchise, String franchise_currency, Sheet dataSheet, int i, String curr) {
         try {
-            retryOnException(() -> waitForElement(driver, By.id("ContentPlaceHolder1_txtPartnerCountry"), 10).sendKeys(dest_country));
+            retryOnException(() -> waitForElement(driver, By.id("ContentPlaceHolder1_txtPartnerCountry"), 5).sendKeys(dest_country));
             retryOnException(() -> driver.findElement(By.id("ContentPlaceHolder1_txtPartnerPost")).sendKeys(dest_post));
-            retryOnException(() -> new Select(waitForElement(driver, By.id("ContentPlaceHolder1_cbMailClass"), 10)).selectByVisibleText(mail_class));
+            retryOnException(() -> new Select(waitForElement(driver, By.id("ContentPlaceHolder1_cbMailClass"), 5)).selectByVisibleText(mail_class));
 
-            WebElement handlingClassElement = waitForElement(driver, By.id("ContentPlaceHolder1_ctl01_ucDeclaration_cbHandlingClass"), 10);
+            WebElement handlingClassElement = waitForElement(driver, By.id("ContentPlaceHolder1_ctl01_ucDeclaration_cbHandlingClass"), 5);
             new Select(handlingClassElement).selectByVisibleText("N (Normal)");
 
             retryOnException(() -> driver.findElement(By.id("ContentPlaceHolder1_ctl01_ucDeclaration_txtSenderName")).sendKeys(send_name));
@@ -236,17 +298,16 @@ public class Automate {
             retryOnException(() -> driver.findElement(By.id("ContentPlaceHolder1_ctl01_ucDeclaration_rptCP_txtCPNetWeight_0")).sendKeys(weight));
             retryOnException(() -> driver.findElement(By.id("ContentPlaceHolder1_ctl01_ucDeclaration_rptCP_txtCPAmount_0")).sendKeys(item_value));
 
-            WebElement currencyElement = waitForElement(driver, By.id("ContentPlaceHolder1_ctl01_ucDeclaration_rptCP_txtCPCurrency_0"), 10);
+            WebElement currencyElement = waitForElement(driver, By.id("ContentPlaceHolder1_ctl01_ucDeclaration_rptCP_txtCPCurrency_0"), 5);
             currencyElement.clear();
             currencyElement.sendKeys(curr);
-            System.out.println("Set currency value to " + curr + " for row " + i);
 
-            WebElement grossWeightElement = waitForElement(driver, By.id("ContentPlaceHolder1_ctl01_ucDeclaration_ucGrossWeight_txtField"), 10);
+            WebElement grossWeightElement = waitForElement(driver, By.id("ContentPlaceHolder1_ctl01_ucDeclaration_ucGrossWeight_txtField"), 5);
             if (grossWeightElement.getAttribute("value").isEmpty()) {
                 grossWeightElement.sendKeys(weight);
             }
 
-            WebElement postageElement = waitForElement(driver, By.id("ContentPlaceHolder1_ctl01_ucDeclaration_ucPostage_txtField"), 10);
+            WebElement postageElement = waitForElement(driver, By.id("ContentPlaceHolder1_ctl01_ucDeclaration_ucPostage_txtField"), 5);
             ((JavascriptExecutor) driver).executeScript("arguments[0].scrollIntoView(true);", postageElement);
             postageElement.clear();
             postageElement.sendKeys(franchise);
@@ -258,6 +319,8 @@ public class Automate {
             retryOnException(() -> driver.findElement(By.id("ContentPlaceHolder1_cbNewAction")).sendKeys("2 (Armazenar final (transferência automática))"));
             retryOnException(() -> driver.findElement(By.id("ContentPlaceHolder1_btnStore")).click());
 
+            handlePopup(driver);
+
         } catch (Exception e) {
             System.out.println("An error occurred in insertData: " + e);
         }
@@ -265,7 +328,7 @@ public class Automate {
 
     public static void updateData(WebDriver driver, String action, String dest_country, String dest_post, String send_name, String send_addr1, String send_addr2, String send_city, String send_state, String send_country, String send_tele, String mail_class, String orig_country, String nature, String franchise, String franchise_currency, Sheet dataSheet, int i, String curr) {
         try {
-            waitForElement(driver, By.id("ContentPlaceHolder1_grdItems"), 10);
+            waitForElement(driver, By.id("ContentPlaceHolder1_grdItems"), 5);
             WebElement updateID = driver.findElement(By.id("ContentPlaceHolder1_grdItems")).findElement(By.tagName("a"));
             retryOnStaleElement(updateID::click);
 
@@ -277,14 +340,6 @@ public class Automate {
             }
         } catch (Exception e) {
             System.out.println("An error occurred in updateData: " + e);
-        }
-    }
-
-    public static void main(String[] args) {
-        try {
-            automate();
-        } catch (IOException e) {
-            e.printStackTrace();
         }
     }
 }
