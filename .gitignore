@@ -6,3 +6,9 @@ pom.xml
 /.idea
 /target
 ./target
+/settings
+/target
+/.idea
+/.idea
+.*
+!/.gitignore
