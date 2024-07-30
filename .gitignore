@@ -12,3 +12,5 @@ pom.xml
 /.idea
 .*
 !/.gitignore
+maven.CI.yml
+
