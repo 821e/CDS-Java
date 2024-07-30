@@ -86,7 +86,7 @@ public class Automate {
             }
         }
     }
-
+//cell values
     public static String getCellValue(Cell cell) {
         switch (cell.getCellType()) {
             case STRING:
