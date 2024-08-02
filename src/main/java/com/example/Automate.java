@@ -86,7 +86,7 @@ public class Automate {
             }
         }
     }
-//cell values
+
     public static String getCellValue(Cell cell) {
         switch (cell.getCellType()) {
             case STRING:
@@ -170,9 +170,6 @@ public class Automate {
     }
 
     private static void processRows(WebDriver driver, Sheet dataSheet, Sheet otherSheet) {
-        int i = 1;
-        int rowsProcessed = 0;
-
         String dest_country = getCellValue(otherSheet.getRow(4).getCell(0));
         String dest_post = getCellValue(otherSheet.getRow(4).getCell(1));
         String send_name = getCellValue(otherSheet.getRow(4).getCell(2));
@@ -190,7 +187,7 @@ public class Automate {
 
         String action = getCellValue(otherSheet.getRow(7).getCell(2));
 
-        while (true) {
+        for (int i = 1; i <= dataSheet.getLastRowNum(); i++) {
             Row row = dataSheet.getRow(i);
             if (row == null || row.getCell(0) == null) {
                 break;
@@ -198,7 +195,6 @@ public class Automate {
 
             String reference_id = getCellValue(row.getCell(3));
             if (reference_id == null || reference_id.isEmpty()) {
-                i++;
                 continue;
             }
 
@@ -216,17 +212,18 @@ public class Automate {
 
             String curr = getCellValue(row.getCell(19));
 
-            if (action.equals("ADD")) {
-                insertData(driver, dest_country, dest_post, send_name, send_addr1, send_addr2, send_city, send_state, send_country, send_tele, mail_class, orig_country, nature, franchise, franchise_currency, dataSheet, i, curr);
-            } else if (action.equals("UPDATE") || action.equals("DELETE")) {
-                updateData(driver, action, dest_country, dest_post, send_name, send_addr1, send_addr2, send_city, send_state, send_country, send_tele, mail_class, orig_country, nature, franchise, franchise_currency, dataSheet, i, curr);
+            try {
+                if (action.equals("ADD")) {
+                    insertData(driver, dest_country, dest_post, send_name, send_addr1, send_addr2, send_city, send_state, send_country, send_tele, mail_class, orig_country, nature, franchise, franchise_currency, dataSheet, i, curr);
+                } else if (action.equals("UPDATE") || action.equals("DELETE")) {
+                    updateData(driver, action, dest_country, dest_post, send_name, send_addr1, send_addr2, send_city, send_state, send_country, send_tele, mail_class, orig_country, nature, franchise, franchise_currency, dataSheet, i, curr);
+                }
+            } catch (Exception e) {
+                System.out.println("An error occurred while processing row " + i + ": " + e);
             }
-
-            i++;
-            rowsProcessed++;
         }
 
-        System.out.println(rowsProcessed + " Rows of data processed.");
+        System.out.println("Rows of data processed.");
     }
 
     public static void retryOnException(Runnable func) {
