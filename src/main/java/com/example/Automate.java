@@ -138,7 +138,7 @@ public class Automate {
 
             try {
                 performLogin(driver, u_name, u_pass);
-                processRows(driver, dataSheet, otherSheet);
+                processRows(driver, dataSheet, otherSheet, u_name, u_pass);
             } catch (Exception e) {
                 System.err.println("An unexpected error occurred: " + e);
             } finally {
@@ -163,13 +163,15 @@ public class Automate {
     }
 
     private static void performLogin(WebDriver driver, String u_name, String u_pass) {
-        waitForElement(driver, By.id("ContentPlaceHolder1_txtUserId"), 10).sendKeys(u_name);
-        driver.findElement(By.id("ContentPlaceHolder1_txtPwd")).sendKeys(u_pass);
-        driver.findElement(By.id("ContentPlaceHolder1_btnLogIn")).click();
-        waitForElement(driver, By.id("ContentPlaceHolder1_txtItemId"), 20);
+        retryWithDelay(() -> {
+            waitForElement(driver, By.id("ContentPlaceHolder1_txtUserId"), 30).sendKeys(u_name);
+            driver.findElement(By.id("ContentPlaceHolder1_txtPwd")).sendKeys(u_pass);
+            driver.findElement(By.id("ContentPlaceHolder1_btnLogIn")).click();
+            waitForElement(driver, By.id("ContentPlaceHolder1_txtItemId"), 30);
+        }, 3, 5000);
     }
 
-    private static void processRows(WebDriver driver, Sheet dataSheet, Sheet otherSheet) {
+    private static void processRows(WebDriver driver, Sheet dataSheet, Sheet otherSheet, String u_name, String u_pass) {
         String dest_country = getCellValue(otherSheet.getRow(4).getCell(0));
         String dest_post = getCellValue(otherSheet.getRow(4).getCell(1));
         String send_name = getCellValue(otherSheet.getRow(4).getCell(2));
@@ -188,7 +190,8 @@ public class Automate {
         String action = getCellValue(otherSheet.getRow(7).getCell(2));
 
         for (int i = 1; i <= dataSheet.getLastRowNum(); i++) {
-            Row row = dataSheet.getRow(i);
+            final int rowIndex = i;  // Make i effectively final
+            Row row = dataSheet.getRow(rowIndex);
             if (row == null || row.getCell(0) == null) {
                 break;
             }
@@ -198,28 +201,39 @@ public class Automate {
                 continue;
             }
 
-            System.out.println("Processing row " + i);
-
-            WebElement element = waitForElementToBeClickable(driver, By.id("ContentPlaceHolder1_txtItemId"), 10);
-            element.clear();
-            element.sendKeys(reference_id);
-            retryOnStaleElement(() -> driver.findElement(By.id("ContentPlaceHolder1_btnOk")).click());
-
-            boolean popupHandled = handlePopup(driver);
-            if (popupHandled) {
-                waitForElement(driver, By.id("ContentPlaceHolder1_txtItemId"), 2);
-            }
-
-            String curr = getCellValue(row.getCell(19));
+            System.out.println("Processing row " + rowIndex);
 
             try {
-                if (action.equals("ADD")) {
-                    insertData(driver, dest_country, dest_post, send_name, send_addr1, send_addr2, send_city, send_state, send_country, send_tele, mail_class, orig_country, nature, franchise, franchise_currency, dataSheet, i, curr);
-                } else if (action.equals("UPDATE") || action.equals("DELETE")) {
-                    updateData(driver, action, dest_country, dest_post, send_name, send_addr1, send_addr2, send_city, send_state, send_country, send_tele, mail_class, orig_country, nature, franchise, franchise_currency, dataSheet, i, curr);
-                }
+                retryWithDelay(() -> {
+                    WebElement element = waitForElementToBeClickable(driver, By.id("ContentPlaceHolder1_txtItemId"), 20);
+                    element.clear();
+                    element.sendKeys(reference_id);
+                    retryOnStaleElement(() -> driver.findElement(By.id("ContentPlaceHolder1_btnOk")).click());
+
+                    boolean popupHandled = handlePopup(driver);
+                    if (popupHandled) {
+                        waitForElement(driver, By.id("ContentPlaceHolder1_txtItemId"), 10);
+                    }
+
+                    String curr = getCellValue(row.getCell(19));
+
+                    if (action.equals("ADD")) {
+                        insertData(driver, dest_country, dest_post, send_name, send_addr1, send_addr2, send_city, send_state, send_country, send_tele, mail_class, orig_country, nature, franchise, franchise_currency, dataSheet, rowIndex, curr);
+                    } else if (action.equals("UPDATE") || action.equals("DELETE")) {
+                        updateData(driver, action, dest_country, dest_post, send_name, send_addr1, send_addr2, send_city, send_state, send_country, send_tele, mail_class, orig_country, nature, franchise, franchise_currency, dataSheet, rowIndex, curr);
+                    }
+                }, 3, 2000);
+            } catch (TimeoutException e) {
+                System.err.println("Timeout occurred while processing row " + rowIndex + ": " + e.getMessage());
+                driver.navigate().refresh();
+                performLogin(driver, u_name, u_pass);
             } catch (Exception e) {
-                System.out.println("An error occurred while processing row " + i + ": " + e);
+                System.err.println("An error occurred while processing row " + rowIndex + ": " + e.getMessage());
+            }
+
+            if (rowIndex % 100 == 0) { // Optional: periodically refresh to avoid potential memory issues
+                driver.navigate().refresh();
+                performLogin(driver, u_name, u_pass);
             }
         }
 
@@ -246,13 +260,33 @@ public class Automate {
         }
     }
 
+    public static void retryWithDelay(Runnable func, int maxAttempts, int delayMillis) {
+        int attempts = 0;
+        while (attempts < maxAttempts) {
+            try {
+                func.run();
+                return;
+            } catch (Exception e) {
+                attempts++;
+                if (attempts >= maxAttempts) {
+                    throw e;
+                }
+                try {
+                    TimeUnit.MILLISECONDS.sleep(delayMillis);
+                } catch (InterruptedException interruptedException) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+    }
+
     public static void insertData(WebDriver driver, String dest_country, String dest_post, String send_name, String send_addr1, String send_addr2, String send_city, String send_state, String send_country, String send_tele, String mail_class, String orig_country, String nature, String franchise, String franchise_currency, Sheet dataSheet, int i, String curr) {
         try {
-            retryOnException(() -> waitForElement(driver, By.id("ContentPlaceHolder1_txtPartnerCountry"), 5).sendKeys(dest_country));
+            retryOnException(() -> waitForElement(driver, By.id("ContentPlaceHolder1_txtPartnerCountry"), 10).sendKeys(dest_country));
             retryOnException(() -> driver.findElement(By.id("ContentPlaceHolder1_txtPartnerPost")).sendKeys(dest_post));
-            retryOnException(() -> new Select(waitForElement(driver, By.id("ContentPlaceHolder1_cbMailClass"), 5)).selectByVisibleText(mail_class));
+            retryOnException(() -> new Select(waitForElement(driver, By.id("ContentPlaceHolder1_cbMailClass"), 10)).selectByVisibleText(mail_class));
 
-            WebElement handlingClassElement = waitForElement(driver, By.id("ContentPlaceHolder1_ctl01_ucDeclaration_cbHandlingClass"), 5);
+            WebElement handlingClassElement = waitForElement(driver, By.id("ContentPlaceHolder1_ctl01_ucDeclaration_cbHandlingClass"), 10);
             new Select(handlingClassElement).selectByVisibleText("N (Normal)");
 
             retryOnException(() -> driver.findElement(By.id("ContentPlaceHolder1_ctl01_ucDeclaration_txtSenderName")).sendKeys(send_name));
@@ -295,16 +329,16 @@ public class Automate {
             retryOnException(() -> driver.findElement(By.id("ContentPlaceHolder1_ctl01_ucDeclaration_rptCP_txtCPNetWeight_0")).sendKeys(weight));
             retryOnException(() -> driver.findElement(By.id("ContentPlaceHolder1_ctl01_ucDeclaration_rptCP_txtCPAmount_0")).sendKeys(item_value));
 
-            WebElement currencyElement = waitForElement(driver, By.id("ContentPlaceHolder1_ctl01_ucDeclaration_rptCP_txtCPCurrency_0"), 5);
+            WebElement currencyElement = waitForElement(driver, By.id("ContentPlaceHolder1_ctl01_ucDeclaration_rptCP_txtCPCurrency_0"), 10);
             currencyElement.clear();
             currencyElement.sendKeys(curr);
 
-            WebElement grossWeightElement = waitForElement(driver, By.id("ContentPlaceHolder1_ctl01_ucDeclaration_ucGrossWeight_txtField"), 5);
+            WebElement grossWeightElement = waitForElement(driver, By.id("ContentPlaceHolder1_ctl01_ucDeclaration_ucGrossWeight_txtField"), 10);
             if (grossWeightElement.getAttribute("value").isEmpty()) {
                 grossWeightElement.sendKeys(weight);
             }
 
-            WebElement postageElement = waitForElement(driver, By.id("ContentPlaceHolder1_ctl01_ucDeclaration_ucPostage_txtField"), 5);
+            WebElement postageElement = waitForElement(driver, By.id("ContentPlaceHolder1_ctl01_ucDeclaration_ucPostage_txtField"), 10);
             ((JavascriptExecutor) driver).executeScript("arguments[0].scrollIntoView(true);", postageElement);
             postageElement.clear();
             postageElement.sendKeys(franchise);
@@ -325,7 +359,7 @@ public class Automate {
 
     public static void updateData(WebDriver driver, String action, String dest_country, String dest_post, String send_name, String send_addr1, String send_addr2, String send_city, String send_state, String send_country, String send_tele, String mail_class, String orig_country, String nature, String franchise, String franchise_currency, Sheet dataSheet, int i, String curr) {
         try {
-            waitForElement(driver, By.id("ContentPlaceHolder1_grdItems"), 5);
+            waitForElement(driver, By.id("ContentPlaceHolder1_grdItems"), 10);
             WebElement updateID = driver.findElement(By.id("ContentPlaceHolder1_grdItems")).findElement(By.tagName("a"));
             retryOnStaleElement(updateID::click);
 

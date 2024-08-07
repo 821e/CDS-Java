@@ -13,4 +13,8 @@ pom.xml
 .*
 !/.gitignore
 maven.CI.yml
-
+target
+idea
+.idea
+.github
+.gitignore
