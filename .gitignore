@@ -18,3 +18,9 @@ idea
 .idea
 .github
 .gitignore
+.target
+.idea
+/target
+.github
+/github
+/.github
