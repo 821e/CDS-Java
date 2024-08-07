@@ -11,6 +11,7 @@ pom.xml
 /.idea
 /.idea
 .*
+./target
 !/.gitignore
 maven.CI.yml
 target
