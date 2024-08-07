@@ -189,49 +189,64 @@ public class Automate {
 
         String action = getCellValue(otherSheet.getRow(7).getCell(2));
 
-        for (int i = 1; i <= dataSheet.getLastRowNum(); i++) {
-            final int rowIndex = i;  // Make i effectively final
-            Row row = dataSheet.getRow(rowIndex);
-            if (row == null || row.getCell(0) == null) {
-                break;
-            }
+        int totalRows = dataSheet.getLastRowNum();
+        int chunkSize = 10;  // Process 10 rows at a time
+        int retries = 3;
 
-            String reference_id = getCellValue(row.getCell(3));
-            if (reference_id == null || reference_id.isEmpty()) {
-                continue;
-            }
+        for (int start = 1; start <= totalRows; start += chunkSize) {
+            System.out.println("Processing rows " + start + " to " + (Math.min(start + chunkSize - 1, totalRows)));
+            for (int i = start; i < Math.min(start + chunkSize, totalRows + 1); i++) {
+                final int rowIndex = i;
+                Row row = dataSheet.getRow(rowIndex);
+                if (row == null || row.getCell(0) == null) {
+                    break;
+                }
 
-            System.out.println("Processing row " + rowIndex);
+                String reference_id = getCellValue(row.getCell(3));
+                if (reference_id == null || reference_id.isEmpty()) {
+                    continue;
+                }
 
-            try {
-                retryWithDelay(() -> {
-                    WebElement element = waitForElementToBeClickable(driver, By.id("ContentPlaceHolder1_txtItemId"), 20);
-                    element.clear();
-                    element.sendKeys(reference_id);
-                    retryOnStaleElement(() -> driver.findElement(By.id("ContentPlaceHolder1_btnOk")).click());
+                System.out.println("Processing row " + rowIndex);
 
-                    boolean popupHandled = handlePopup(driver);
-                    if (popupHandled) {
-                        waitForElement(driver, By.id("ContentPlaceHolder1_txtItemId"), 10);
+                int attempt = 0;
+                boolean success = false;
+                while (attempt < retries && !success) {
+                    try {
+                        retryWithDelay(() -> {
+                            WebElement element = waitForElementToBeClickable(driver, By.id("ContentPlaceHolder1_txtItemId"), 60);
+                            element.clear();
+                            element.sendKeys(reference_id);
+                            retryOnStaleElement(() -> driver.findElement(By.id("ContentPlaceHolder1_btnOk")).click());
+
+                            boolean popupHandled = handlePopup(driver);
+                            if (popupHandled) {
+                                waitForElement(driver, By.id("ContentPlaceHolder1_txtItemId"), 10);
+                            }
+
+                            String curr = getCellValue(row.getCell(19));
+
+                            if (action.equals("ADD")) {
+                                insertData(driver, dest_country, dest_post, send_name, send_addr1, send_addr2, send_city, send_state, send_country, send_tele, mail_class, orig_country, nature, franchise, franchise_currency, dataSheet, rowIndex, curr);
+                            } else if (action.equals("UPDATE") || action.equals("DELETE")) {
+                                updateData(driver, action, dest_country, dest_post, send_name, send_addr1, send_addr2, send_city, send_state, send_country, send_tele, mail_class, orig_country, nature, franchise, franchise_currency, dataSheet, rowIndex, curr);
+                            }
+                        }, 3, 2000);
+                        success = true;
+                    } catch (TimeoutException e) {
+                        System.err.println("Timeout occurred while processing row " + rowIndex + ": " + e.getMessage());
+                        driver.navigate().refresh();
+                        performLogin(driver, u_name, u_pass);
+                        attempt++;
+                    } catch (Exception e) {
+                        System.err.println("An error occurred while processing row " + rowIndex + ": " + e.getMessage());
+                        break;
                     }
-
-                    String curr = getCellValue(row.getCell(19));
-
-                    if (action.equals("ADD")) {
-                        insertData(driver, dest_country, dest_post, send_name, send_addr1, send_addr2, send_city, send_state, send_country, send_tele, mail_class, orig_country, nature, franchise, franchise_currency, dataSheet, rowIndex, curr);
-                    } else if (action.equals("UPDATE") || action.equals("DELETE")) {
-                        updateData(driver, action, dest_country, dest_post, send_name, send_addr1, send_addr2, send_city, send_state, send_country, send_tele, mail_class, orig_country, nature, franchise, franchise_currency, dataSheet, rowIndex, curr);
-                    }
-                }, 3, 2000);
-            } catch (TimeoutException e) {
-                System.err.println("Timeout occurred while processing row " + rowIndex + ": " + e.getMessage());
-                driver.navigate().refresh();
-                performLogin(driver, u_name, u_pass);
-            } catch (Exception e) {
-                System.err.println("An error occurred while processing row " + rowIndex + ": " + e.getMessage());
+                }
             }
 
-            if (rowIndex % 100 == 0) { // Optional: periodically refresh to avoid potential memory issues
+            // Refresh the driver every chunk to avoid potential memory issues
+            if (start + chunkSize <= totalRows) {
                 driver.navigate().refresh();
                 performLogin(driver, u_name, u_pass);
             }
