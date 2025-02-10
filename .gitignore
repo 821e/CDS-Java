@@ -1,27 +1,62 @@
-/.settings
+# IDE and Build Tools
+.settings/
 .classpath
 .factorypath
 .project
+.idea/
+*.iml
+*.iws
+.vscode/
+target/
 pom.xml
-/.idea
-/target
-./target
-/settings
-/target
-/.idea
-/.idea
-.*
-./target
-!/.gitignore
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
 maven.CI.yml
-target
-idea
-.idea
-.github
-.gitignore
-.target
-.idea
-/target
-.github
-/github
-/.github
+
+# Compiled Files
+*.class
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Logs and Crash Reports
+*.log
+hs_err_pid*
+replay_pid*
+
+# Development Tools
+.mtj.tmp/
+*.ctxt
+chromedriver
+chromedriver.exe
+
+# Configuration and Sensitive Data
+config.properties
+credentials.properties
+
+# OS Generated Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Excel Temporary Files
+~$*.xls*
+
+# Git Related
+.github/
+!.gitignore
+.*
