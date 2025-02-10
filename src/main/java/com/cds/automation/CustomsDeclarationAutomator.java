@@ -83,6 +83,9 @@ public class Automate {
                     Thread.currentThread().interrupt();
                 }
                 attempts++;
+                if (attempts == 3) {
+                    throw new RuntimeException("Maximum retry attempts reached for stale element", e);
+                }
             }
         }
     }
@@ -159,6 +162,8 @@ public class Automate {
         }
         options.addArguments("--disable-gpu");
         options.addArguments("--window-size=1920,1080");
+        options.addArguments("--no-sandbox");
+        options.addArguments("--disable-dev-shm-usage");
         return options;
     }
 
@@ -324,9 +329,33 @@ public class Automate {
             retryOnException(() -> driver.findElement(By.id("ContentPlaceHolder1_ctl01_ucDeclaration_rptCP_txtCPNetWeight_0")).sendKeys(weight));
             retryOnException(() -> driver.findElement(By.id("ContentPlaceHolder1_ctl01_ucDeclaration_rptCP_txtCPAmount_0")).sendKeys(item_value));
 
-            WebElement currencyElement = waitForElement(driver, By.id("ContentPlaceHolder1_ctl01_ucDeclaration_rptCP_txtCPCurrency_0"), 10);
+            WebElement currencyElement = waitForElement(driver, 
+                By.id("ContentPlaceHolder1_ctl01_ucDeclaration_rptCP_txtCPCurrency_0"), 10);
             currencyElement.clear();
             currencyElement.sendKeys(curr);
+
+            // Set franchise information
+            retryOnException(() -> {
+                WebElement franchiseElement = driver.findElement(
+                    By.id("ContentPlaceHolder1_ctl01_ucDeclaration_txtFranchiseAmount"));
+                franchiseElement.clear();
+                franchiseElement.sendKeys(franchise);
+            });
+
+            retryOnException(() -> {
+                WebElement franchiseCurrencyElement = driver.findElement(
+                    By.id("ContentPlaceHolder1_ctl01_ucDeclaration_txtFranchiseCurrency"));
+                franchiseCurrencyElement.clear();
+                franchiseCurrencyElement.sendKeys(franchise_currency);
+            });
+
+            // Submit the form
+            retryOnException(() -> {
+                WebElement submitButton = waitForElementToBeClickable(driver, 
+                    By.id("ContentPlaceHolder1_btnSubmit"), 10);
+                submitButton.click();
+                handlePopup(driver);
+            });
 
             WebElement grossWeightElement = waitForElement(driver, By.id("ContentPlaceHolder1_ctl01_ucDeclaration_ucGrossWeight_txtField"), 10);
             if (grossWeightElement.getAttribute("value").isEmpty()) {
