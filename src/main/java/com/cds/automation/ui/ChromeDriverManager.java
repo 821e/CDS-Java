@@ -11,7 +11,7 @@ public class ChromeDriverManager {
         
         if (headless) {
             Logger.info("Running in headless mode");
-            options.addArguments("--headless");
+            options.addArguments("--headless=new");
         }
 
         options.addArguments("--start-maximized");
@@ -19,12 +19,16 @@ public class ChromeDriverManager {
         options.addArguments("--no-sandbox");
         options.addArguments("--disable-dev-shm-usage");
         options.addArguments("--remote-allow-origins=*");
+        options.addArguments("--disable-extensions");
+        options.addArguments("--disable-popup-blocking");
 
         try {
-            return new ChromeDriver(options);
+            ChromeDriver driver = new ChromeDriver(options);
+            WebDriverConfig.configureTimeouts(driver);
+            return driver;
         } catch (Exception e) {
-            Logger.error("Failed to initialize Chrome WebDriver");
-            throw e;
+            Logger.error("Failed to initialize Chrome WebDriver: " + e.getMessage());
+            throw new RuntimeException("Chrome WebDriver initialization failed", e);
         }
     }
 }
